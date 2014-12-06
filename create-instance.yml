@@ -1,0 +1,73 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: False
+  vars_files:
+    - ec2var.yml
+  tasks:
+    - name: Create ec2 instances.
+      ec2: >
+          keypair={{keypair}}
+          group={{group}}
+          instance_type={{instance_type}}
+          image={{image}}
+          region={{region}}
+          count=1
+          wait=true
+          zone={{zone}}
+          instance_tags='{"Name":"ansible-test"}'
+          vpc_subnet_id={{vpc_subnet_id}}
+      register: ec2
+    - name: add ec2 instance to hosts group
+      local_action:
+        module: add_host
+        hostname: "{{ item.public_ip }}"
+        ansible_ssh_private_key_file: ~/.ssh/{{keypair}}.pem
+        groupname: ec2hosts
+      with_items: ec2.instances
+    - name: wait for opening ssh protocol
+      local_action:
+        module: wait_for
+        host: "{{ item.public_ip }}"
+        port: 22
+        delay: 60
+        timeout: 600
+        state: started
+      with_items: ec2.instances
+
+- hosts: ec2hosts
+  gather_facts: True
+  user: ec2-user
+  sudo: True
+  tasks:
+    - name: yum update
+      yum: name='*' state=latest
+    - name: install git / hg 
+      yum: name={{item}} state=installed
+      with_items:
+        - git
+        - hg
+    - name: set python default encoding to utf-8
+      copy: src=sitecustomize.py dest=/usr/lib/python2.6/site-packages/sitecustomize.py
+    - name: clone Kanon by hg
+      hg: repo="https://bitbucket.org/okamototk/kanonconductor" dest="/tmp/kanon"
+    - name: setup kanon
+      shell: yes 'y' | /tmp/kanon/kanon-setup
+    - name: clone trac-code-comments-plugin
+      git: repo="https://github.com/Automattic/trac-code-comments-plugin" dest="./trac-code-comments-plugin"
+    - name: create egg file
+      shell: chdir="./trac-code-comments-plugin" python setup.py bdist_egg
+    - name: move egg file
+      shell: mv ./trac-code-comments-plugin/dist/TracCodeComments-1.1.1-py2.6.egg /var/opt/kanon/trac/SampleProject/plugins/
+    - name: change egg file permission
+      file: path=/var/opt/kanon/trac/SampleProject/plugins/TracCodeComments-1.1.1-py2.6.egg owner=apache group=apache
+    - name: create egg cache directory
+      file: path=/var/opt/kanon/trac/.egg-cache state=directory owner=apache group=apache
+    - name: remove trac mercurial plugin
+      file: path=/opt/kanon/lib/python2.6/site-packages/TracMercurial-0.12.0.29dev_r0-py2.6.egg state=absent
+    - name: restart httpd
+      service: name=httpd state=restarted
+    - name: upgrade trac
+      shell: /opt/kanon/bin/trac-admin /var/opt/kanon/trac/SampleProject upgrade
+    - name: upgrade trac wiki documents
+      shell: /opt/kanon/bin/trac-admin /var/opt/kanon/trac/SampleProject wiki upgrade

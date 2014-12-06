@@ -1,0 +1,9 @@
+---
+  keypair: sample_keypair
+  group: sample_group
+  instance_type: t1.micro
+  image: ami-55a7ea65
+  region: us-west-2
+  number: 1
+  zone: us-west-2b
+  vpc_subnet_id: subnet-sample
