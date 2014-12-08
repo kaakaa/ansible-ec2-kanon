@@ -15,7 +15,7 @@
           count=1
           wait=true
           zone={{zone}}
-          instance_tags='{"Name":"ansible-test"}'
+          instance_tags='{"Name":"AnsibleTest", "Kind":"CodeReading"}'
           vpc_subnet_id={{vpc_subnet_id}}
       register: ec2
     - name: add ec2 instance to hosts group
@@ -65,8 +65,14 @@
       file: path=/var/opt/kanon/trac/.egg-cache state=directory owner=apache group=apache
     - name: remove trac mercurial plugin
       file: path=/opt/kanon/lib/python2.6/site-packages/TracMercurial-0.12.0.29dev_r0-py2.6.egg state=absent
+    - name: insert redirect setting on httpd
+      lineinfile: dest=/etc/httpd/conf/httpd.conf line="{{item}}"
+      with_items:
+        - RewriteEngine On
+        - RewriteCond %{REQUEST_URI} !trac/.*$
+        - RewriteRule ^/$ trac/SampleProject [R,L]
     - name: restart httpd
-      service: name=httpd state=restarted
+      service: name=httpd state=restarted enabled=yes
     - name: upgrade trac
       shell: /opt/kanon/bin/trac-admin /var/opt/kanon/trac/SampleProject upgrade
     - name: upgrade trac wiki documents
